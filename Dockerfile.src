@@ -40,10 +40,10 @@ RUN curl \
 
 RUN helm init --client-only --skip-refresh && helm repo remove stable || true
 
-COPY . /go/src/github.com/operator-framework/operator-metering
-WORKDIR /go/src/github.com/operator-framework/operator-metering
+COPY gotools /go/src/gotools
+RUN go build -o /go/bin/test2json /go/src/gotools/test2json/main.go
 
-RUN make bin/test2json
-
+RUN mkdir -p /out
 VOLUME /out
+
 CMD ["/bin/bash"]
