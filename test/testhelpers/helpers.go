@@ -6,8 +6,8 @@ import (
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/operator-framework/operator-metering/pkg/apis/metering/v1alpha1"
-	"github.com/operator-framework/operator-metering/pkg/hive"
 	"github.com/operator-framework/operator-metering/pkg/operator/reportingutil"
+	"github.com/operator-framework/operator-metering/pkg/presto"
 )
 
 func NewReport(name, namespace, testQueryName string, reportStart, reportEnd *time.Time, status v1alpha1.ReportStatus) *v1alpha1.Report {
@@ -53,16 +53,14 @@ func NewReportDataSource(name, namespace string) *v1alpha1.ReportDataSource {
 	}
 }
 
-func NewPrestoTable(name, namespace string, columns []hive.Column) *v1alpha1.PrestoTable {
+func NewPrestoTable(name, namespace string, columns []presto.Column) *v1alpha1.PrestoTable {
 	return &v1alpha1.PrestoTable{
 		ObjectMeta: meta.ObjectMeta{
-			Name:      reportingutil.PrestoTableResourceNameFromKind("Report", namespace, name),
+			Name:      reportingutil.TableResourceNameFromKind("Report", namespace, name),
 			Namespace: namespace,
 		},
 		Status: v1alpha1.PrestoTableStatus{
-			Parameters: v1alpha1.TableParameters{
-				Columns: columns,
-			},
+			Columns: columns,
 		},
 	}
 }

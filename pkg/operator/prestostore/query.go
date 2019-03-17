@@ -113,6 +113,10 @@ func ImportFromTimeRange(logger logrus.FieldLogger, clock clock.Clock, promConn 
 		}
 
 		if numMetrics != 0 {
+			// Ensure the metrics are sorted by timestamp
+			sort.Slice(metrics, func(i, j int) bool {
+				return metrics[i].Timestamp.Before(metrics[j].Timestamp)
+			})
 			metricsBegin := metrics[0].Timestamp
 			metricsEnd := metrics[numMetrics-1].Timestamp
 			logger := promLogger.WithFields(logrus.Fields{
@@ -132,12 +136,8 @@ func ImportFromTimeRange(logger logrus.FieldLogger, clock clock.Clock, promConn 
 				return importResults, fmt.Errorf("failed to store Prometheus metrics into table %s for the range %v to %v: %v",
 					cfg.PrestoTableName, promQueryBegin, promQueryEnd, err)
 			}
-			// Ensure the metrics are sorted by timestamp
-			sort.Slice(metrics, func(i, j int) bool {
-				return metrics[i].Timestamp.Before(metrics[j].Timestamp)
-			})
-			importResults.Metrics = metrics
 			logger.Debugf("stored %d metrics for time range %s to %s into Presto table %s (took %s)", numMetrics, promQueryBegin, promQueryEnd, cfg.PrestoTableName, prestoStoreDuration)
+			importResults.Metrics = append(importResults.Metrics, metrics...)
 			metricsCollectors.MetricsImportedCounter.Add(float64(numMetrics))
 			metricsCount += numMetrics
 		}
@@ -146,6 +146,10 @@ func ImportFromTimeRange(logger logrus.FieldLogger, clock clock.Clock, promConn 
 	}
 
 	if len(importResults.ProcessedTimeRanges) != 0 {
+		sort.Slice(importResults.Metrics, func(i, j int) bool {
+			return importResults.Metrics[i].Timestamp.Before(importResults.Metrics[j].Timestamp)
+		})
+
 		begin := importResults.ProcessedTimeRanges[0].Start.UTC()
 		end := importResults.ProcessedTimeRanges[len(timeRanges)-1].End.UTC()
 		logger.Infof("stored a total of %d metrics for data between %s and %s into %s", metricsCount, begin, end, cfg.PrestoTableName)
