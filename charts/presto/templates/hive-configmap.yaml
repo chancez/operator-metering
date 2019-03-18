@@ -51,10 +51,50 @@ data:
         <name>hive.default.fileformat</name>
         <value>{{ .Values.spec.hive.config.defaultFileFormat }}</value>
       </property>
+{{- if .Values.spec.hive.config.metastoreWarehouseDir }}
+      <property>
+        <name>hive.metastore.warehouse.dir</name>
+        <value>{{ .Values.spec.hive.config.metastoreWarehouseDir }}</value>
+      </property>
+{{- end }}
 {{- if .Values.spec.hive.config.metastoreClientSocketTimeout }}
       <property>
         <name>hive.metastore.client.socket.timeout</name>
         <value>{{ .Values.spec.hive.config.metastoreClientSocketTimeout }}</value>
+      </property>
+{{- end }}
+{{- if .Values.spec.hive.config.metastoreConnectRetries }}
+      <property>
+        <name>hive.metastore.connect.retries</name>
+        <value>{{ .Values.spec.hive.config.metastoreConnectRetries }}</value>
+      </property>
+{{- end }}
+{{- if .Values.spec.hive.config.metastoreConnectRetryDelaySeconds }}
+      <property>
+        <name>hive.metastore.client.connect.retry.delay</name>
+        <value>{{ .Values.spec.hive.config.metastoreConnectRetryDelaySeconds }}</value>
+      </property>
+{{- end }}
+{{- if .Values.spec.hive.config.transactions.enabled }}
+      <property>
+        <name>hive.txn.manager</name>
+        <value>org.apache.hadoop.hive.ql.lockmgr.DbTxnManager</value>
+      </property>
+      <property>
+        <name>hive.compactor.initiator.on</name>
+        <value>true</value>
+      </property>
+      <property>
+        <name>hive.compactor.worker.threads</name>
+        <value>2</value>
+      </property>
+      <property>
+        <name>hive.support.concurrency</name>
+        <value>true</value>
+      </property>
+      <property>
+        <name>hive.exec.dynamic.partition.mode</name>
+        <value>nonstrict</value>
       </property>
 {{- end }}
     </configuration>

@@ -2,7 +2,7 @@ spec:
   presto:
     image:
       repository: quay.io/coreos/presto
-      tag: metering-0.212
+      tag: latest
       pullPolicy: Always
 
     securityContext:
@@ -103,7 +103,7 @@ spec:
   hive:
     image:
       repository: quay.io/coreos/hive
-      tag: metering-2.3.3
+      tag: latest
       pullPolicy: Always
 
     config:
@@ -112,14 +112,18 @@ spec:
       dbConnectionDriver: "org.apache.derby.jdbc.EmbeddedDriver"
       dbConnectionUsername: null
       dbConnectionPassword: null
-      enableMetastoreSchemaVerification: false
-      autoCreateMetastoreSchema: true
+      enableMetastoreSchemaVerification: true
+      autoCreateMetastoreSchema: false
       defaultFileFormat: "orc"
       defaultCompression: "zlib"
       metastoreURIs: "thrift://hive-metastore:9083"
       useHdfsConfigMap: true
       hdfsConfigMapName: hdfs-config
       metastoreClientSocketTimeout: null
+      metastoreConnectRetries: 5
+      metastoreConnectRetryDelaySeconds: 5
+      transactions:
+        enabled: true
 
     securityContext:
       runAsNonRoot: true

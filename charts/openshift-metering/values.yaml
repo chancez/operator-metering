@@ -3,12 +3,15 @@ global:
 
 defaultStorage:
   create: true
-  name: "hive-hdfs"
+  name: "hive"
   isDefault: true
   type: "hive"
   hive:
-    tableProperties:
-      location: "hdfs://hdfs-namenode-proxy:9820/operator_metering/storage/"
+    # Unmanaged because default is created by Hive, not us
+    unmanagedDatabase: true
+    databaseName: "default"
+    # databaseName: "metering"
+    # location: "hdfs://hdfs-namenode-proxy:9820/operator_metering/storage/"
 
 permissions:
   meteringViewers: []
@@ -56,6 +59,8 @@ presto:
     hive:
       securityContext:
         fsGroup: null
+      config:
+        metastoreWarehouseDir: "hdfs://hdfs-namenode-proxy:9820/operator_metering/default_hive_warehouse/"
 hdfs:
   enabled: true
   spec:

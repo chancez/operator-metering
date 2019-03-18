@@ -4,14 +4,11 @@ metadata:
   name: "operator-metering"
 spec:
   defaultStorage:
-    create: true
-     name: "local-storage"
-     isDefault: true
-     type: "hive"
-     hive:
-       tableProperties:
-         # do not change this
-         location: "/user/hive/warehouse"
+   type: "hive"
+   hive:
+     # feel free to adjust the name
+     databaseName: "metering-nfs"
+     location: "/user/hive/warehouse"
   presto:
     spec:
       config:
