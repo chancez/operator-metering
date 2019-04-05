@@ -1,6 +1,7 @@
 package reporting
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -107,15 +108,17 @@ func TestValidateGenerationQueryDependencies(t *testing.T) {
 	}
 }
 
+func newDefault(s string) *json.RawMessage {
+	v := json.RawMessage(s)
+	return &v
+}
+
 func TestGetGenerationQueryDependencies(t *testing.T) {
 	testNs := "test-ns"
 
 	ds1 := testhelpers.NewReportDataSource("datasource1", testNs)
 	ds2 := testhelpers.NewReportDataSource("datasource2", testNs)
-	ds3 := testhelpers.NewReportDataSource("datasource3", testNs)
-	ds4 := testhelpers.NewReportDataSource("datasource4", testNs)
-	ds5 := testhelpers.NewReportDataSource("datasource5", testNs)
-	ds6 := testhelpers.NewReportDataSource("datasource6", testNs)
+	ds3 := testhelpers.NewReportDataSource("datasource4", testNs)
 
 	testQuery := &metering.ReportGenerationQuery{
 		ObjectMeta: meta.ObjectMeta{
@@ -123,13 +126,31 @@ func TestGetGenerationQueryDependencies(t *testing.T) {
 			Namespace: testNs,
 		},
 		Spec: metering.ReportGenerationQuerySpec{
-			DataSources: []string{
-				"datasource1",
-				"datasource2",
-			},
-			DynamicReportQueries: []string{
-				"dynamicquery1",
-				"dynamicquery2",
+			Inputs: []metering.ReportGenerationQueryInputDefinition{
+				{
+					Name:     "ds1",
+					Type:     "ReportDataSource",
+					Required: true,
+					Default:  newDefault(`"datasource1"`),
+				},
+				{
+					Name:     "ds2",
+					Type:     "ReportDataSource",
+					Required: true,
+					Default:  newDefault(`"datasource2"`),
+				},
+				{
+					Name:     "q1",
+					Type:     "ReportGenerationQuery",
+					Required: true,
+					Default:  newDefault(`"query1"`),
+				},
+				{
+					Name:     "q2",
+					Type:     "ReportGenerationQuery",
+					Required: true,
+					Default:  newDefault(`"query2"`),
+				},
 			},
 		},
 	}
@@ -140,20 +161,13 @@ func TestGetGenerationQueryDependencies(t *testing.T) {
 			Namespace: testNs,
 		},
 		Spec: metering.ReportGenerationQuerySpec{
-			DataSources: []string{
-				"datasource3",
-			},
-		},
-	}
-
-	dynamicquery1 := &metering.ReportGenerationQuery{
-		ObjectMeta: meta.ObjectMeta{
-			Name:      "dynamicquery1",
-			Namespace: testNs,
-		},
-		Spec: metering.ReportGenerationQuerySpec{
-			DataSources: []string{
-				"datasource4",
+			Inputs: []metering.ReportGenerationQueryInputDefinition{
+				{
+					Name:     "ds3",
+					Type:     "ReportDataSource",
+					Required: true,
+					Default:  newDefault(`"datasource4"`),
+				},
 			},
 		},
 	}
@@ -164,18 +178,15 @@ func TestGetGenerationQueryDependencies(t *testing.T) {
 			Namespace: testNs,
 		},
 		Spec: metering.ReportGenerationQuerySpec{
-			DataSources: []string{
-				"datasource5",
+			Inputs: []metering.ReportGenerationQueryInputDefinition{
+				{
+					Name:     "q3",
+					Type:     "ReportGenerationQuery",
+					Required: true,
+					Default:  newDefault(`"query3"`),
+				},
 			},
 		},
-	}
-
-	dynamicquery2 := &metering.ReportGenerationQuery{
-		ObjectMeta: meta.ObjectMeta{
-			Name:      "dynamicquery2",
-			Namespace: testNs,
-		},
-		Spec: metering.ReportGenerationQuerySpec{},
 	}
 
 	query3 := &metering.ReportGenerationQuery{
@@ -183,23 +194,15 @@ func TestGetGenerationQueryDependencies(t *testing.T) {
 			Name:      "query3",
 			Namespace: testNs,
 		},
-		Spec: metering.ReportGenerationQuerySpec{
-			DataSources: []string{
-				"datasource6",
-			},
-		},
+		Spec: metering.ReportGenerationQuerySpec{},
 	}
 
 	expectedDeps := &ReportGenerationQueryDependencies{
 		ReportDataSources: []*metering.ReportDataSource{
-			ds1, ds2, ds4,
-			// ds3, ds4, ds5, ds6,
+			ds1, ds2, ds3,
 		},
-		// ReportGenerationQueries: []*metering.ReportGenerationQuery{
-		// 	query1, query2, query3,
-		// },
-		DynamicReportGenerationQueries: []*metering.ReportGenerationQuery{
-			dynamicquery1, dynamicquery2,
+		ReportGenerationQueries: []*metering.ReportGenerationQuery{
+			query1, query2, query3,
 		},
 		Reports: []*metering.Report{},
 	}
@@ -207,18 +210,13 @@ func TestGetGenerationQueryDependencies(t *testing.T) {
 	dataSourceStore := map[string]*metering.ReportDataSource{
 		"test-ns/datasource1": ds1,
 		"test-ns/datasource2": ds2,
-		"test-ns/datasource3": ds3,
-		"test-ns/datasource4": ds4,
-		"test-ns/datasource5": ds5,
-		"test-ns/datasource6": ds6,
+		"test-ns/datasource4": ds3,
 	}
 	queryStore := map[string]*metering.ReportGenerationQuery{
-		"test-ns/test-query":    testQuery,
-		"test-ns/query1":        query1,
-		"test-ns/query2":        query2,
-		"test-ns/query3":        query3,
-		"test-ns/dynamicquery1": dynamicquery1,
-		"test-ns/dynamicquery2": dynamicquery2,
+		"test-ns/test-query": testQuery,
+		"test-ns/query1":     query1,
+		"test-ns/query2":     query2,
+		"test-ns/query3":     query3,
 	}
 	reportStore := make(map[string]*metering.Report)
 

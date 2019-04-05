@@ -12,9 +12,11 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/util/retry"
 
 	cbTypes "github.com/operator-framework/operator-metering/pkg/apis/metering/v1alpha1"
 	"github.com/operator-framework/operator-metering/pkg/aws"
+	cbInterfaces "github.com/operator-framework/operator-metering/pkg/generated/clientset/versioned/typed/metering/v1alpha1"
 	"github.com/operator-framework/operator-metering/pkg/hive"
 	"github.com/operator-framework/operator-metering/pkg/operator/prestostore"
 	"github.com/operator-framework/operator-metering/pkg/operator/reporting"
@@ -133,18 +135,20 @@ func (op *Reporting) handlePrometheusMetricsDataSource(logger log.FieldLogger, d
 		if err != nil {
 			return fmt.Errorf("error creating table for ReportDataSource %s: %s", dataSource.Name, err)
 		}
-		hiveTable, err = op.waitForHiveTable(hiveTable.Namespace, hiveTable.Name, time.Second, 10*time.Second)
+		hiveTable, err = op.waitForHiveTable(hiveTable.Namespace, hiveTable.Name, time.Second, 30*time.Second)
 		if err != nil {
 			return fmt.Errorf("error creating table for ReportDataSource %s: %s", dataSource.Name, err)
 		}
-		prestoTable, err = op.waitForPrestoTable(hiveTable.Namespace, hiveTable.Name, time.Second, 10*time.Second)
+		prestoTable, err = op.waitForPrestoTable(hiveTable.Namespace, hiveTable.Name, time.Second, 30*time.Second)
 		if err != nil {
 			return fmt.Errorf("error creating table for ReportDataSource %s: %s", dataSource.Name, err)
 		}
 		logger.Infof("created table %s", tableName)
 
-		dataSource.Status.TableRef = v1.LocalObjectReference{hiveTable.Name}
-		dataSource, err = op.meteringClient.MeteringV1alpha1().ReportDataSources(dataSource.Namespace).Update(dataSource)
+		dsClient := op.meteringClient.MeteringV1alpha1().ReportDataSources(dataSource.Namespace)
+		dataSource, err = updateReportDataSource(dsClient, dataSource.Name, func(newDS *cbTypes.ReportDataSource) {
+			newDS.Status.TableRef = v1.LocalObjectReference{hiveTable.Name}
+		})
 		if err != nil {
 			logger.WithError(err).Errorf("failed to update ReportDataSource TableName field %q", tableName)
 			return err
@@ -207,12 +211,13 @@ func (op *Reporting) handlePrometheusMetricsDataSource(logger log.FieldLogger, d
 		return err
 	}
 
-	if dataSource.Status.PrometheusMetricImportStatus == nil {
-		dataSource.Status.PrometheusMetricImportStatus = &cbTypes.PrometheusMetricImportStatus{}
+	importStatus := dataSource.Status.PrometheusMetricImportStatus
+	if importStatus == nil {
+		importStatus = &cbTypes.PrometheusMetricImportStatus{}
 	}
 
 	// record the lastImportTime
-	dataSource.Status.PrometheusMetricImportStatus.LastImportTime = &metav1.Time{op.clock.Now().UTC()}
+	importStatus.LastImportTime = &metav1.Time{op.clock.Now().UTC()}
 
 	// run the import
 	results, err := importer.ImportFromLastTimestamp(context.Background(), allowIncompleteChunks)
@@ -234,26 +239,26 @@ func (op *Reporting) handlePrometheusMetricsDataSource(logger log.FieldLogger, d
 
 		// Update the timestamp which records the first timestamp we attempted
 		// to query from.
-		if dataSource.Status.PrometheusMetricImportStatus.ImportDataStartTime == nil || firstTimeRange.Start.Before(dataSource.Status.PrometheusMetricImportStatus.ImportDataStartTime.Time) {
-			dataSource.Status.PrometheusMetricImportStatus.ImportDataStartTime = &metav1.Time{firstTimeRange.Start}
+		if importStatus.ImportDataStartTime == nil || firstTimeRange.Start.Before(importStatus.ImportDataStartTime.Time) {
+			importStatus.ImportDataStartTime = &metav1.Time{firstTimeRange.Start}
 		}
 		// Update the timestamp which records the latest we've attempted to query
 		// up until.
-		if dataSource.Status.PrometheusMetricImportStatus.ImportDataEndTime == nil || dataSource.Status.PrometheusMetricImportStatus.ImportDataEndTime.Time.Before(lastTimeRange.End) {
-			dataSource.Status.PrometheusMetricImportStatus.ImportDataEndTime = &metav1.Time{lastTimeRange.End}
+		if importStatus.ImportDataEndTime == nil || importStatus.ImportDataEndTime.Time.Before(lastTimeRange.End) {
+			importStatus.ImportDataEndTime = &metav1.Time{lastTimeRange.End}
 		}
 
 		// The data we collected is farther back than 1.5 their chunkSize, so requeue sooner
 		// since we're backlogged. We use 1.5 because being behind 1 full chunk
 		// is typical, but we shouldn't be 2 full chunks after catching up.
 		backlogDetectionDuration := time.Duration(1.5*importerCfg.ChunkSize.Seconds()) * time.Second
-		backlogDuration := op.clock.Now().Sub(dataSource.Status.PrometheusMetricImportStatus.ImportDataEndTime.Time)
+		backlogDuration := op.clock.Now().Sub(importStatus.ImportDataEndTime.Time)
 		if backlogDuration > backlogDetectionDuration {
 			// import delay has jitter so that processing backlogged
 			// ReportDataSources happens in a more randomized order to allow
 			// all of them to get processed when the queue is blocked.
 			importDelay = wait.Jitter(5*time.Second, 2)
-			logger.Warnf("Prometheus metrics import backlog detected: imported data for Prometheus ReportDataSource %s newest imported metric timestamp %s is %s away, queuing to reprocess in %s", dataSource.Name, dataSource.Status.PrometheusMetricImportStatus.ImportDataEndTime.Time, backlogDuration, importDelay)
+			logger.Warnf("Prometheus metrics import backlog detected: imported data for Prometheus ReportDataSource %s newest imported metric timestamp %s is %s away, queuing to reprocess in %s", dataSource.Name, importStatus.ImportDataEndTime.Time, backlogDuration, importDelay)
 		}
 
 		if len(results.Metrics) != 0 {
@@ -265,16 +270,16 @@ func (op *Reporting) handlePrometheusMetricsDataSource(logger log.FieldLogger, d
 
 			// if there is no existing timestamp then this must be the first import
 			// and we should set the earliestImportedMetricTime
-			if dataSource.Status.PrometheusMetricImportStatus.EarliestImportedMetricTime == nil {
-				dataSource.Status.PrometheusMetricImportStatus.EarliestImportedMetricTime = &metav1.Time{firstMetric.Timestamp}
-			} else if dataSource.Status.PrometheusMetricImportStatus.EarliestImportedMetricTime.After(firstMetric.Timestamp) {
+			if importStatus.EarliestImportedMetricTime == nil {
+				importStatus.EarliestImportedMetricTime = &metav1.Time{firstMetric.Timestamp}
+			} else if importStatus.EarliestImportedMetricTime.After(firstMetric.Timestamp) {
 				dataSourceLogger.Errorf("detected time new metric import has older data than previously imported, data is likely duplicated.")
 				// TODO(chance): Look at adding an error to the status.
 				return nil // strop processing this ReportDataSource
 			}
 
-			if dataSource.Status.PrometheusMetricImportStatus.NewestImportedMetricTime == nil || lastMetric.Timestamp.After(dataSource.Status.PrometheusMetricImportStatus.NewestImportedMetricTime.Time) {
-				dataSource.Status.PrometheusMetricImportStatus.NewestImportedMetricTime = &metav1.Time{lastMetric.Timestamp}
+			if importStatus.NewestImportedMetricTime == nil || lastMetric.Timestamp.After(importStatus.NewestImportedMetricTime.Time) {
+				importStatus.NewestImportedMetricTime = &metav1.Time{lastMetric.Timestamp}
 			}
 
 			if err := op.queueDependentReportsForDataSource(dataSource); err != nil {
@@ -286,7 +291,10 @@ func (op *Reporting) handlePrometheusMetricsDataSource(logger log.FieldLogger, d
 		}
 
 		// Update the status to indicate where we are in the metric import process
-		dataSource, err = op.meteringClient.MeteringV1alpha1().ReportDataSources(dataSource.Namespace).Update(dataSource)
+		dsClient := op.meteringClient.MeteringV1alpha1().ReportDataSources(dataSource.Namespace)
+		dataSource, err = updateReportDataSource(dsClient, dataSource.Name, func(newDS *cbTypes.ReportDataSource) {
+			newDS.Status.PrometheusMetricImportStatus = importStatus
+		})
 		if err != nil {
 			return fmt.Errorf("unable to update ReportDataSource %s PrometheusMetricImportStatus: %v", dataSource.Name, err)
 		}
@@ -327,8 +335,11 @@ func (op *Reporting) handleAWSBillingDataSource(logger log.FieldLogger, dataSour
 		}
 
 		logger.Debugf("successfully created AWS Billing DataSource table %s pointing to s3 bucket %s at prefix %s", tableName, source.Bucket, source.Prefix)
-		dataSource.Status.TableRef = v1.LocalObjectReference{hiveTable.Name}
-		dataSource, err = op.meteringClient.MeteringV1alpha1().ReportDataSources(dataSource.Namespace).Update(dataSource)
+
+		dsClient := op.meteringClient.MeteringV1alpha1().ReportDataSources(dataSource.Namespace)
+		dataSource, err = updateReportDataSource(dsClient, dataSource.Name, func(newDS *cbTypes.ReportDataSource) {
+			newDS.Status.TableRef = v1.LocalObjectReference{hiveTable.Name}
+		})
 		if err != nil {
 			return err
 		}
@@ -392,8 +403,10 @@ func (op *Reporting) handlePrestoTableDataSource(logger log.FieldLogger, dataSou
 			return fmt.Errorf("error creating table for ReportDataSource %s: %s", dataSource.Name, err)
 		}
 
-		dataSource.Status.TableRef = v1.LocalObjectReference{prestoTable.Name}
-		dataSource, err = op.meteringClient.MeteringV1alpha1().ReportDataSources(dataSource.Namespace).Update(dataSource)
+		dsClient := op.meteringClient.MeteringV1alpha1().ReportDataSources(dataSource.Namespace)
+		dataSource, err = updateReportDataSource(dsClient, dataSource.Name, func(newDS *cbTypes.ReportDataSource) {
+			newDS.Status.TableRef = v1.LocalObjectReference{prestoTable.Name}
+		})
 		if err != nil {
 			logger.WithError(err).Errorf("failed to update ReportDataSource status.tableRef field %q", prestoTable.Name)
 			return err
@@ -431,13 +444,18 @@ func (op *Reporting) handleGenerationQueryViewDataSource(logger log.FieldLogger,
 		viewName = prestoTable.Status.TableName
 	}
 
-	_, err = reporting.GetAndValidateGenerationQueryDependencies(
+	dependencyResult, err := reporting.ResolveDependencies(
 		reporting.NewReportGenerationQueryListerGetter(op.reportGenerationQueryLister),
 		reporting.NewReportDataSourceListerGetter(op.reportDataSourceLister),
 		reporting.NewReportListerGetter(op.reportLister),
-		generationQuery,
-		op.uninitialiedDependendenciesHandler(),
-	)
+		generationQuery.Namespace,
+		generationQuery.Spec.Inputs,
+		nil)
+	if err != nil {
+		return err
+	}
+
+	err = reporting.ValidateGenerationQueryDependencies(dependencyResult.Dependencies, op.uninitialiedDependendenciesHandler())
 	if err != nil {
 		if reporting.IsUninitializedDependencyError(err) {
 			logger.Warnf("unable to validate ReportGenerationQuery %s, has uninitialized dependencies: %v", generationQuery.Name, err)
@@ -474,29 +492,19 @@ func (op *Reporting) handleGenerationQueryViewDataSource(logger log.FieldLogger,
 			return err
 		}
 
-		reports, err := op.reportLister.Reports(dataSource.Namespace).List(labels.Everything())
-		if err != nil {
-			return err
-		}
-
-		datasources, err := op.reportDataSourceLister.ReportDataSources(dataSource.Namespace).List(labels.Everything())
-		if err != nil {
-			return err
-		}
-
-		queries, err := op.reportGenerationQueryLister.ReportGenerationQueries(dataSource.Namespace).List(labels.Everything())
-		if err != nil {
-			return err
-		}
 		queryCtx := &reporting.ReportQueryTemplateContext{
 			Namespace:               dataSource.Namespace,
 			ReportQuery:             generationQuery,
-			Reports:                 reports,
-			ReportGenerationQueries: queries,
-			ReportDataSources:       datasources,
+			Reports:                 dependencyResult.Dependencies.Reports,
+			ReportGenerationQueries: dependencyResult.Dependencies.ReportGenerationQueries,
+			ReportDataSources:       dependencyResult.Dependencies.ReportDataSources,
 			PrestoTables:            prestoTables,
 		}
-		renderedQuery, err := reporting.RenderQuery(queryCtx, reporting.TemplateContext{})
+		renderedQuery, err := reporting.RenderQuery(queryCtx, reporting.TemplateContext{
+			Report: reporting.ReportTemplateInfo{
+				Inputs: dependencyResult.InputValues,
+			},
+		})
 		if err != nil {
 			return err
 		}
@@ -517,8 +525,10 @@ func (op *Reporting) handleGenerationQueryViewDataSource(logger log.FieldLogger,
 
 		logger.Infof("created view %s", viewName)
 
-		dataSource.Status.TableRef.Name = prestoTable.Name
-		dataSource, err = op.meteringClient.MeteringV1alpha1().ReportDataSources(dataSource.Namespace).Update(dataSource)
+		dsClient := op.meteringClient.MeteringV1alpha1().ReportDataSources(dataSource.Namespace)
+		dataSource, err = updateReportDataSource(dsClient, dataSource.Name, func(newDS *cbTypes.ReportDataSource) {
+			newDS.Status.TableRef.Name = prestoTable.Name
+		})
 		if err != nil {
 			logger.WithError(err).Errorf("failed to update ReportDataSource tableRef field to %q", prestoTable.Name)
 			return err
@@ -638,4 +648,20 @@ func (op *Reporting) queueDependentReportsForDataSource(dataSource *cbTypes.Repo
 
 	}
 	return nil
+}
+
+func updateReportDataSource(dsClient cbInterfaces.ReportDataSourceInterface, dsName string, updateFunc func(*cbTypes.ReportDataSource)) (*cbTypes.ReportDataSource, error) {
+	var ds *cbTypes.ReportDataSource
+	if err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		newDS, err := dsClient.Get(dsName, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		updateFunc(newDS)
+		ds, err = dsClient.Update(newDS)
+		return err
+	}); err != nil {
+		return nil, err
+	}
+	return ds, nil
 }
