@@ -49,6 +49,57 @@ spec:
       affinity:
 {{ toYaml .Values.spec.hive.metastore.affinity | indent 8 }}
 {{- end }}
+      initContainers:
+      - name: init-db
+        command: ["/hive-scripts/entrypoint.sh"]
+        args: ["/hive-scripts/init-db.sh"]
+        image: "{{ .Values.spec.hive.image.repository }}:{{ .Values.spec.hive.image.tag }}"
+        imagePullPolicy: {{ .Values.spec.hive.image.pullPolicy }}
+        env:
+        - name: DB_DRIVER
+          value: {{ .Values.spec.hive.config.dbConnectionDriver | quote }}
+        - name: HIVE_LOGLEVEL
+          value: {{ upper .Values.spec.hive.metastore.config.logLevel | quote}}
+        - name: JAVA_MAX_MEM_RATIO
+          value: "{{ .Values.spec.hive.metastore.config.jvm.percentMemoryLimitAsHeap }}"
+          optional: true
+{{ include "hive-env" . | indent 8 }}
+        - name: MY_MEM_REQUEST
+          valueFrom:
+            resourceFieldRef:
+              containerName: metastore
+              resource: requests.memory
+        - name: MY_MEM_LIMIT
+          valueFrom:
+            resourceFieldRef:
+              containerName: metastore
+              resource: limits.memory
+        volumeMounts:
+        - name: hive-config
+          mountPath: /hive-config
+        - name: hive-scripts
+          mountPath: /hive-scripts
+{{- if .Values.spec.hive.config.useHdfsConfigMap }}
+        - name: hdfs-config
+          mountPath: /hadoop-config
+{{- end }}
+        - name: hive-metastore-db-data
+          mountPath: /var/lib/hive
+        # openshift requires volumeMounts for VOLUMEs in a Dockerfile
+        - name: namenode-empty
+          mountPath: /hadoop/dfs/name
+        - name: datanode-empty
+          mountPath: /hadoop/dfs/data
+{{- if .Values.spec.config.sharedVolume.enabled }}
+        - name: hive-warehouse-data
+          mountPath: {{ .Values.spec.config.sharedVolume.mountPath }}
+{{- end }}
+{{- if or (not .Values.spec.config.sharedVolume.enabled) (and .Values.spec.config.sharedVolume.enabled (ne .Values.spec.config.sharedVolume.mountPath "/user/hive/warehouse") ) }}
+        - name: hive-warehouse-empty
+          mountPath: /user/hive/warehouse
+{{- end }}
+        resources:
+{{ toYaml .Values.spec.hive.metastore.resources | indent 10 }}
       containers:
       - name: metastore
         command: ["/hive-scripts/entrypoint.sh"]

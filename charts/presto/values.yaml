@@ -112,8 +112,8 @@ spec:
       dbConnectionDriver: "org.apache.derby.jdbc.EmbeddedDriver"
       dbConnectionUsername: null
       dbConnectionPassword: null
-      enableMetastoreSchemaVerification: false
-      autoCreateMetastoreSchema: true
+      enableMetastoreSchemaVerification: true
+      autoCreateMetastoreSchema: false
       defaultFileFormat: "orc"
       defaultCompression: "zlib"
       metastoreURIs: "thrift://hive-metastore:9083"

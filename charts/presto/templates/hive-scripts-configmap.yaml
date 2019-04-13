@@ -75,3 +75,29 @@ data:
     export HIVE_OPTS="${HIVE_OPTS} --hiveconf hive.root.logger=${HIVE_LOGLEVEL},console "
 
     exec $@
+
+  init-db.sh: |
+    #!/bin/bash
+    set -e
+    set -x
+    DB_TYPE=""
+    case "$DB_DRIVER" in
+    "org.apache.derby.jdbc.EmbeddedDriver")
+        DB_TYPE="derby"
+    ;;
+    "com.mysql.jdbc.Driver")
+        DB_TYPE="mysql"
+    ;;
+    "org.postgresql.Driver")
+        DB_TYPE="postgresql"
+    ;;
+    esac
+
+    if schematool -dbType $DB_TYPE -info; then
+        schematool -dbType $DB_TYPE -validate
+    else
+        schematool -dbType $DB_TYPE -initSchema
+        schematool -dbType $DB_TYPE -info
+        schematool -dbType $DB_TYPE -validate
+    fi
+
