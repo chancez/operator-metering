@@ -120,6 +120,8 @@ spec:
       useHdfsConfigMap: true
       hdfsConfigMapName: hdfs-config
       metastoreClientSocketTimeout: null
+      metastoreConnectRetries: 5
+      metastoreConnectRetryDelaySeconds: 5
 
     securityContext:
       runAsNonRoot: true

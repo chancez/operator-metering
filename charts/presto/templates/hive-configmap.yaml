@@ -57,6 +57,19 @@ data:
         <value>{{ .Values.spec.hive.config.metastoreClientSocketTimeout }}</value>
       </property>
 {{- end }}
+{{- if .Values.spec.hive.config.metastoreConnectRetries }}
+      <property>
+        <name>hive.metastore.connect.retries</name>
+        <value>{{ .Values.spec.hive.config.metastoreConnectRetries }}</value>
+      </property>
+{{- end }}
+{{- if .Values.spec.hive.config.metastoreConnectRetryDelaySeconds }}
+      <property>
+        <name>hive.metastore.client.connect.retry.delay</name>
+        <value>{{ .Values.spec.hive.config.metastoreConnectRetryDelaySeconds }}</value>
+      </property>
+{{- end }}
+{{- end }}
     </configuration>
 
 
