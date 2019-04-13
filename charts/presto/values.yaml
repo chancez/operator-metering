@@ -122,6 +122,8 @@ spec:
       metastoreClientSocketTimeout: null
       metastoreConnectRetries: 5
       metastoreConnectRetryDelaySeconds: 5
+      transactions:
+        enabled: true
 
     securityContext:
       runAsNonRoot: true
