@@ -15,11 +15,22 @@
 - name: Configure TLS
   include_tasks: configure_tls.yml
 
-- name: Store MeteringConfig spec into values file
-  copy: content="{{ meteringconfig_spec }}" dest=/tmp/metering-values.yaml
-
 - name: Configure Storage
   include_tasks: configure_storage.yml
+
+- name: Print meteringconfig values
+  debug:
+    msg: "{{ item }}: {{ lookup('vars', item) }}"
+  loop: "{{ vars | dict2items | to_json | from_json | json_query(query) | difference(filtered_vars) }}"
+  vars:
+    filtered_vars:
+      - meteringconfig_spec
+      - meteringconfig_spec_overrides
+      - meteringconfig_default_values
+    query: "[?starts_with(@.key, `meteringconfig_`)].key"
+
+- name: Store MeteringConfig spec into values file
+  copy: content="{{ meteringconfig_spec }}" dest=/tmp/metering-values.yaml
 
 - include_tasks: "{{ item }}"
   loop:
