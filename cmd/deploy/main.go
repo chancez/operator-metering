@@ -2,10 +2,11 @@ package main
 
 import (
 	"fmt"
+	"os"
+
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-	"os"
 
 	meteringclientv1 "github.com/operator-framework/operator-metering/pkg/generated/clientset/versioned/typed/metering/v1"
 	"github.com/operator-framework/operator-metering/pkg/operator/deploy"
@@ -53,7 +54,7 @@ func init() {
 	uninstallCmd.Flags().StringVar(&cfg.Namespace, "namespace", "", "The namespace to install the metering resources. This can also be specified through the METERING_NAMESPACE ENV var.")
 	uninstallCmd.Flags().StringVar(&cfg.Platform, "platform", "openshift", "The platform to install the metering stack on. Supported options are 'openshift', 'upstream', or 'ocp-testing'. This can also be specified through the DEPLOY_PLATFORM ENV var.")
 	uninstallCmd.Flags().StringVar(&cfg.MeteringCR, "meteringconfig", "", "The absolute/relative path to the MeteringConfig custom resource. This can also be specified through the METERING_CR_FILE ENV var")
-	uninstallCmd.Flags().StringVar(&cfg.ManifestLocation, "manifest-dir", "", "The absolute/relative path to the metering manfiest directory. This can also be specified through the INSTALLER_MANIFESTS_DIR")
+	uninstallCmd.Flags().StringVar(&cfg.DeployManifestsDirectory, "deploy-manifests-dir", "manifests/deploy", "The absolute/relative path to the metering manfiest directory. This can also be specified through the INSTALLER_MANIFESTS_DIR")
 	uninstallCmd.Flags().BoolVar(&cfg.DeleteCRDs, "delete-crd", false, "If true, this would delete the metering CRDs during an uninstall. This can also be specified through the METERING_DELETE_CRDS ENV var.")
 	uninstallCmd.Flags().BoolVar(&cfg.DeleteCRB, "delete-crb", false, "If true, this would delete the metering cluster role bindings during an uninstall. This can also be specified through METERING_DELETE_CRB ENV var.")
 	uninstallCmd.Flags().BoolVar(&cfg.DeleteNamespace, "delete-namespace", false, "If true, this would delete the namespace during an uninstall. This can also be specified through the METERING_DELETE_NAMESPACE ENV var.")
@@ -63,7 +64,7 @@ func init() {
 	installCmd.Flags().StringVar(&cfg.Namespace, "namespace", "", "The namespace to install the metering resources. This can also be specified through the METERING_NAMESPACE ENV var.")
 	installCmd.Flags().StringVar(&cfg.Platform, "platform", "openshift", "The platform to install the metering stack on. Supported options are 'openshift', 'upstream', or 'ocp-testing'. This can also be specified through the DEPLOY_PLATFORM ENV var.")
 	installCmd.Flags().StringVar(&cfg.MeteringCR, "meteringconfig", "", "The absolute/relative path to the MeteringConfig custom resource. This can also be specified through the METERING_CR_FILE ENV var")
-	installCmd.Flags().StringVar(&cfg.ManifestLocation, "manifest-dir", "", "The absolute/relative path to the metering manfiest directory. This can also be specified through the INSTALLER_MANIFESTS_DIR")
+	installCmd.Flags().StringVar(&cfg.DeployManifestsDirectory, "deploy-manifests-dir", "manifests/deploy", "The absolute/relative path to the metering manfiest directory. This can also be specified through the INSTALLER_MANIFESTS_DIR")
 	installCmd.Flags().StringVar(&cfg.Repo, "repo", "", "The name of the metering-ansible-operator image repository. This can also be specified through the METERING_OPERATOR_IMAGE_REPO ENV var")
 	installCmd.Flags().StringVar(&cfg.Tag, "tag", "", "The name of the metering-ansible-operator image tag. This can also be specified through the METERING_OPERATOR_IMAGE_TAG ENV var")
 	installCmd.Flags().BoolVar(&cfg.SkipMeteringDeployment, "skip-metering-operator-deployment", false, "If true, only create the metering namespace, CRDs, and MeteringConfig resources. This can also be specified through the SKIP_METERING_OPERATOR_DEPLOY ENV var.")
@@ -73,7 +74,7 @@ func init() {
 		"DEPLOY_PLATFORM":                   "platform",
 		"METERING_CR_FILE":                  "meteringconfig",
 		"SKIP_METERING_OPERATOR_DEPLOYMENT": "skip-metering-operator-deployment",
-		"INSTALLER_MANIFESTS_DIR":           "manifest-dir",
+		"DEPLOY_MANIFESTS_DIR":              "deploy-manifests-dir",
 		"METERING_OPERATOR_IMAGE_REPO":      "repo",
 		"METERING_OPERATOR_IMAGE_TAG":       "tag",
 	}
@@ -87,7 +88,7 @@ func init() {
 		"METERING_NAMESPACE":        "namespace",
 		"DEPLOY_PLATFORM":           "platform",
 		"METERING_CR_FILE":          "meteringconfig",
-		"INSTALLER_MANIFESTS_DIR":   "manifest-dir",
+		"DEPLOY_MANIFESTS_DIR":      "deploy-manifests-dir",
 		"METERING_DELETE_CRB":       "delete-crb",
 		"METERING_DELETE_CRDS":      "delete-crd",
 		"METERING_DELETE_PVCS":      "delete-pvc",

@@ -52,18 +52,18 @@ type CRD struct {
 // platform to deploy on, whether or not to delete the metering CRDs,
 // or namespace during an install, the location to the manifests dir, etc.
 type Config struct {
-	Namespace              string
-	Platform               string
-	ManifestLocation       string
-	MeteringCR             string
-	SkipMeteringDeployment bool
-	DeleteCRDs             bool
-	DeleteCRB              bool
-	DeleteNamespace        bool
-	DeletePVCs             bool
-	DeleteAll              bool
-	Repo                   string
-	Tag                    string
+	Namespace                string
+	Platform                 string
+	DeployManifestsDirectory string
+	MeteringCR               string
+	SkipMeteringDeployment   bool
+	DeleteCRDs               bool
+	DeleteCRB                bool
+	DeleteNamespace          bool
+	DeletePVCs               bool
+	DeleteAll                bool
+	Repo                     string
+	Tag                      string
 }
 
 // Deployer holds all the information needed to handle the deployment
@@ -71,12 +71,13 @@ type Config struct {
 // to provision and remove all the metering resources, and a customized
 // deployment configuration.
 type Deployer struct {
-	config         Config
-	crds           []CRD
-	logger         log.FieldLogger
-	client         *kubernetes.Clientset
-	apiExtClient   apiextclientv1beta1.CustomResourceDefinitionsGetter
-	meteringClient *metering.MeteringV1Client
+	config                           Config
+	crds                             []CRD
+	ansibleOperatorManifestsLocation string
+	logger                           log.FieldLogger
+	client                           *kubernetes.Clientset
+	apiExtClient                     apiextclientv1beta1.CustomResourceDefinitionsGetter
+	meteringClient                   *metering.MeteringV1Client
 }
 
 // NewDeployer creates a new reference to a deploy structure, and then calls helper
@@ -105,37 +106,46 @@ func NewDeployer(
 	}
 	deploy.logger.Infof("Metering Deploy Namespace: %s", deploy.config.Namespace)
 
-	if deploy.config.ManifestLocation != "" {
-		deploy.config.ManifestLocation, err = filepath.Abs(deploy.config.ManifestLocation)
-		if err != nil {
-			return nil, fmt.Errorf("Failed to override the manifest location %s: %v", deploy.config.ManifestLocation, err)
-		}
-
-		_, err = os.Stat(deploy.config.ManifestLocation)
-		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("Failed to set $INSTALL_MANIFESTS_DIR or --manifest-dir to a valid path: %v", err)
-		}
-
-		deploy.logger.Infof("Overrided manifest location: %s", deploy.config.ManifestLocation)
-	} else {
-		defaultManifestBase, err := filepath.Abs(manifestDeployDirname)
-		if err != nil {
-			return nil, fmt.Errorf("Failed to get the absolute path of the manifest/deploy directory: %v", err)
-		}
-
-		switch strings.ToLower(deploy.config.Platform) {
-		case "upstream":
-			deploy.config.ManifestLocation = filepath.Join(defaultManifestBase, upstreamManifestDirname, manifestAnsibleOperator)
-		case "openshift":
-			deploy.config.ManifestLocation = filepath.Join(defaultManifestBase, openshiftManifestDirname, manifestAnsibleOperator)
-		case "ocp-testing":
-			deploy.config.ManifestLocation = filepath.Join(defaultManifestBase, ocpTestingManifestDirname, manifestAnsibleOperator)
-		default:
-			return deploy, fmt.Errorf("Failed to set $DEPLOY_PLATFORM or --platform flag to a valid value. Supported platforms: [upstream, openshift, ocp-testing]")
-		}
-
-		deploy.logger.Infof("Metering Deploy Platform: %s", deploy.config.Platform)
+	if deploy.config.DeployManifestsDirectory == "" {
+		return nil, fmt.Errorf("")
 	}
+
+	deployDir, err := filepath.Abs(deploy.config.DeployManifestsDirectory)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to get the absolute path of the manifest/deploy directory %s: %v", deploy.config.DeployManifestsDirectory, err)
+	}
+
+	dirStat, err := os.Stat(deploy.config.DeployManifestsDirectory)
+	if os.IsNotExist(err) {
+		return nil, fmt.Errorf("Failed to get the stat the manifest/deploy directory %s: %v", deploy.config.DeployManifestsDirectory, err)
+	}
+	if !dirStat.IsDir() {
+		return nil, fmt.Errorf("Specified deploy directory '%s' is not a directory", deploy.config.DeployManifestsDirectory)
+	}
+
+	var ansibleOperatorManifestDir string
+
+	switch strings.ToLower(deploy.config.Platform) {
+	case "upstream":
+		ansibleOperatorManifestDir = filepath.Join(deployDir, upstreamManifestDirname, manifestAnsibleOperator)
+	case "openshift":
+		ansibleOperatorManifestDir = filepath.Join(deployDir, openshiftManifestDirname, manifestAnsibleOperator)
+	case "ocp-testing":
+		ansibleOperatorManifestDir = filepath.Join(deployDir, ocpTestingManifestDirname, manifestAnsibleOperator)
+	default:
+		return deploy, fmt.Errorf("Failed to set $DEPLOY_PLATFORM or --platform flag to a valid value. Supported platforms: [upstream, openshift, ocp-testing]")
+	}
+
+	dirStat, err = os.Stat(ansibleOperatorManifestDir)
+	if os.IsNotExist(err) {
+		return nil, fmt.Errorf("Failed to stat the %s deploy platform directory '%s': %v", deploy.config.Platform, ansibleOperatorManifestDir, err)
+	}
+	if !dirStat.IsDir() {
+		return nil, fmt.Errorf("Specified %s deploy platform directory '%s' is not a directory", deploy.config.Platform, ansibleOperatorManifestDir)
+	}
+
+	deploy.logger.Infof("Metering Deploy Platform: %s", deploy.config.Platform)
+	deploy.ansibleOperatorManifestsLocation = ansibleOperatorManifestDir
 
 	// initialize a slice of CRD structures and assign to the deploy.crds field
 	// this is used by the install/uninstall drivers to manage the metering CRDs
