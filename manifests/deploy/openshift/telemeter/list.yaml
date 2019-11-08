@@ -3485,6 +3485,8 @@ objects:
             - required:
               - reportQueryView
             - required:
+              - reportQueryTable
+            - required:
               - awsBilling
             - required:
               - prestoTable
@@ -3545,7 +3547,7 @@ objects:
                 required:
                 - query
                 type: object
-              reportQueryView:
+              reportQueryTable:
                 properties:
                   inputs:
                     items:
@@ -3571,6 +3573,27 @@ objects:
                     required:
                     - storageLocationName
                     type: object
+                required:
+                - queryName
+                type: object
+              reportQueryView:
+                properties:
+                  inputs:
+                    items:
+                      properties:
+                        name:
+                          minLength: 1
+                          type: string
+                        value: {}
+                      required:
+                      - name
+                      - value
+                      type: object
+                    minItems: 1
+                    type: array
+                  queryName:
+                    minLength: 1
+                    type: string
                 required:
                 - queryName
                 type: object
