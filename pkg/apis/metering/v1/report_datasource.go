@@ -39,6 +39,10 @@ type ReportDataSourceSpec struct {
 	// ReportQueryView  represents a datasource which creates a Presto
 	// view from a ReportQuery
 	ReportQueryView *ReportQueryViewDataSource `json:"reportQueryView,omitempty"`
+
+	// ReportQueryTable  represents a datasource which creates a Presto
+	// view from a ReportQuery
+	ReportQueryTable *ReportQueryTableDataSource `json:"reportQueryTable,omitempty"`
 }
 
 type AWSBillingDataSource struct {
@@ -74,6 +78,15 @@ type PrestoTableDataSource struct {
 }
 
 type ReportQueryViewDataSource struct {
+	// QueryName specifies the ReportQuery to execute when the report
+	// runs.
+	QueryName string `json:"queryName"`
+	// Inputs are the inputs to the ReportQuery
+	Inputs  ReportQueryInputValues `json:"inputs,omitempty"`
+	Storage *StorageLocationRef    `json:"storage,omitempty"`
+}
+
+type ReportQueryTableDataSource struct {
 	// QueryName specifies the ReportQuery to execute when the report
 	// runs.
 	QueryName string `json:"queryName"`
